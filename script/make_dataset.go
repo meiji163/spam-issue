@@ -11,7 +11,7 @@ import (
 	"github.com/meiji163/gh-spam/spam"
 )
 
-type byNumber []*spam.Issue
+type byNumber []spam.Issue
 
 func (l byNumber) Len() int {
 	return len(l)
@@ -25,18 +25,20 @@ func (l byNumber) Swap(i, j int) {
 	l[i], l[j] = l[j], l[i]
 }
 
-func downloadIssues(owner, repo string) ([]*spam.Issue, error) {
+func downloadIssues(owner, repo string) ([]spam.Issue, error) {
 	issues, err := spam.GetNonSpam(owner, repo)
 	if err != nil {
 		return nil, err
 	}
 
 	spamIssues, err := spam.GetSpam(owner, repo)
+	fmt.Printf("%d spam issues\n", len(spamIssues))
 	if err != nil {
 		return nil, err
 	}
 
 	for _, spamIssue := range spamIssues {
+		spamIssue.IsSpam = true
 		issues = append(issues, spamIssue)
 	}
 	sort.Sort(byNumber(issues))
@@ -96,20 +98,27 @@ func main() {
 
 	log.Println("Creating dataset")
 
-	authors := map[string]*spam.User{}
+	authors := map[string]spam.User{}
 	feats := []spam.Features{}
 
-	for _, issue := range issues {
+	for i, issue := range issues {
 		username := issue.Author.Login
+
 		author, ok := authors[username]
 		if !ok {
 			author, err = spam.GetUserStats(username)
 			if err != nil {
 				log.Fatal(err)
 			}
+			authors[username] = author
 		}
+		//fmt.Printf("%+v\n", author)
 		feat := spam.GetFeatures(issue, author)
 		feats = append(feats, feat)
+
+		if i%20 == 19 {
+			log.Printf("%d/%d processed\n", i+1, len(issues))
+		}
 	}
 
 	filename := fmt.Sprintf("%s-%s_data.csv", owner, repo)

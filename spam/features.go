@@ -1,6 +1,9 @@
 package spam
 
+import "time"
+
 var AssocToClass = map[string]int{
+	"NONE":                   0,
 	"FIRST_TIMER":            0,
 	"FIRST_TIME_CONTRIBUTOR": 1,
 	"COLLABORATOR":           2,
@@ -20,7 +23,8 @@ type Features struct {
 	// AuthorRepos is the number of repos author contributed to
 	AuthorRepos int
 
-	// AccountAge is the days since account was created
+	// AccountAge is the number of days account was open
+	// when the issue was posted
 	AccountAge int
 
 	// IsBioSet is 1 if author has a bio, else 0
@@ -33,12 +37,16 @@ type Features struct {
 	IsSpam int
 }
 
-func GetFeatures(issue *Issue, author *User) Features {
+func GetFeatures(issue Issue, author User) Features {
+	issueCreated, _ := time.Parse(time.RFC3339, issue.CreatedAt)
+	acctCreated, _ := time.Parse(time.RFC3339, author.CreatedAt)
+	acctAge := int(issueCreated.Sub(acctCreated).Hours() / 24)
+
 	feats := Features{
 		Association:   AssocToClass[issue.AuthorAssociation],
 		Following:     author.Following,
 		Followers:     author.Followers,
-		AccountAge:    int(author.Age.Hours()) / 24,
+		AccountAge:    acctAge,
 		Contributions: author.TotalContributions,
 		AuthorRepos:   author.ReposContributed,
 	}

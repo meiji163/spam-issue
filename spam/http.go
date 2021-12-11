@@ -2,7 +2,6 @@ package spam
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/cli/go-gh"
 	"github.com/cli/go-gh/pkg/api"
@@ -11,7 +10,7 @@ import (
 // GitHub User with profile info and contribution stats
 type User struct {
 	Name               string
-	Age                time.Duration
+	CreatedAt          string
 	Bio                string
 	Followers          int
 	Following          int
@@ -24,16 +23,18 @@ type Issue struct {
 	Title             string
 	Body              string
 	Author            struct{ Login string }
+	CreatedAt         string
 	AuthorAssociation string
 	IsSpam            bool
 }
 
 // Gets summary of GitHub user's account and contributions
-func GetUserStats(username string) (*User, error) {
+func GetUserStats(username string) (User, error) {
+	usr := User{}
 	opts := &api.ClientOptions{EnableCache: true}
 	client, err := gh.GQLClient(opts)
 	if err != nil {
-		return nil, err
+		return usr, err
 	}
 
 	query := `query GetUserStats($username: String!) {
@@ -69,20 +70,18 @@ func GetUserStats(username string) (*User, error) {
 	}{}
 	err = client.Do(query, variables, &resp)
 	if err != nil {
-		return nil, err
+		return usr, err
 	}
 
-	created, _ := time.Parse(time.RFC3339, resp.User.CreatedAt)
-	age := time.Since(created)
-	usr := User{
+	usr = User{
 		Name:               username,
-		Age:                age,
+		CreatedAt:          resp.User.CreatedAt,
 		Followers:          resp.User.Followers.TotalCount,
 		Following:          resp.User.Following.TotalCount,
 		TotalContributions: resp.User.ContributionsCollection.ContributionCalendar.TotalContributions,
 		ReposContributed:   resp.User.RepositoriesContributedTo.TotalCount,
 	}
-	return &usr, nil
+	return usr, nil
 }
 
 // Get contributors and the number of contributions for a repo
@@ -112,18 +111,19 @@ func GetContributors(owner, repo string) (map[string]int, error) {
 }
 
 // Gets issues opened by an author in a repo
-func GetUserIssues(owner, repo, username string) ([]*Issue, error) {
+func GetUserIssues(owner, repo, username string) ([]Issue, error) {
 	searchQuery := fmt.Sprintf("repo:%s/%s is:issue author:%s", owner, repo, username)
 	return issueSearchQuery(searchQuery)
 }
 
 // Finds issues that were likely closed as spam
-func GetSpam(owner, repo string) ([]*Issue, error) {
+func GetSpam(owner, repo string) ([]Issue, error) {
 	searchQuery := fmt.Sprintf("repo:%s/%s is:issue is:closed comments:0 -linked:pr", owner, repo)
 	issues, err := issueSearchQuery(searchQuery)
 	if err != nil {
 		return nil, err
 	}
+
 	for _, issue := range issues {
 		issue.IsSpam = true
 	}
@@ -131,12 +131,12 @@ func GetSpam(owner, repo string) ([]*Issue, error) {
 }
 
 // Get closed issues that were definitely not spam
-func GetNonSpam(owner, repo string) ([]*Issue, error) {
+func GetNonSpam(owner, repo string) ([]Issue, error) {
 	searchQuery := fmt.Sprintf("repo:%s/%s is:issue is:closed linked:pr", owner, repo)
 	return issueSearchQuery(searchQuery)
 }
 
-func issueSearchQuery(query string) ([]*Issue, error) {
+func issueSearchQuery(query string) ([]Issue, error) {
 	opts := &api.ClientOptions{EnableCache: true}
 	client, err := gh.GQLClient(opts)
 	if err != nil {
@@ -146,6 +146,7 @@ func issueSearchQuery(query string) ([]*Issue, error) {
 	gqlQuery := `query GetSpamIssues($query: String!, $after: String) {
 search(query: $query, after: $after, type: ISSUE, first: 100) {
     pageInfo {
+	  startCursor
       hasNextPage
       endCursor
     }
@@ -156,12 +157,13 @@ search(query: $query, after: $after, type: ISSUE, first: 100) {
 		body
         number
         authorAssociation
+		createdAt
       }
     }
   }
 }`
 
-	issues := []*Issue{}
+	issues := []Issue{}
 	variables := map[string]interface{}{"query": query}
 
 	for {
@@ -181,8 +183,8 @@ search(query: $query, after: $after, type: ISSUE, first: 100) {
 		}
 
 		for _, issue := range resp.Search.Nodes {
-			if issue.Title != "" {
-				issues = append(issues, &issue)
+			if issue.Title != "" && issue.Author.Login != "" {
+				issues = append(issues, issue)
 			}
 		}
 
