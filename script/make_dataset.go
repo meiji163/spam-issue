@@ -34,7 +34,7 @@ func downloadIssues(owner, repo string) ([]spam.Issue, error) {
 	}
 
 	spamIssues, err := spam.GetSpam(owner, repo)
-	fmt.Printf("%d spam issues\n", len(spamIssues))
+	log.Printf("(%d) spam issues\n", len(spamIssues))
 	if err != nil {
 		return nil, err
 	}
@@ -55,12 +55,12 @@ func writeToCSV(fname string, feats []spam.Features) error {
 
 	defer f.Close()
 
-	header := "association,contributions,repos,age,followers,following,body_len,title_len,is_spam\n"
+	header := "association,contributions,repos,age,followers,following,body_len,title_len,sim_score,is_spam\n"
 	f.WriteString(header)
 
 	for _, feat := range feats {
 		f.WriteString(
-			fmt.Sprintf("%d,%d,%d,%d,%d,%d,%d,%d,%d\n",
+			fmt.Sprintf("%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n",
 				feat.Association,
 				feat.Contributions,
 				feat.AuthorRepos,
@@ -69,6 +69,7 @@ func writeToCSV(fname string, feats []spam.Features) error {
 				feat.Following,
 				feat.BodyLen,
 				feat.TitleLen,
+				feat.TemplateScore,
 				feat.IsSpam))
 	}
 	return nil
@@ -83,13 +84,11 @@ func main() {
 	if len(os.Args) != 2 {
 		help()
 	}
-
 	fullName := os.Args[1]
 	names := strings.Split(fullName, "/")
 	if len(names) != 2 {
 		help()
 	}
-
 	owner := names[0]
 	repo := names[1]
 
@@ -101,10 +100,17 @@ func main() {
 	log.Printf("Downloaded (%d) issues\n", len(issues))
 
 	log.Println("Creating dataset")
-
 	authors := map[string]spam.User{}
 	feats := []spam.Features{}
 
+	// fetch issue templates for matching
+	templates, err := spam.GetTemplates(owner, repo)
+	log.Printf("%d templates\n", len(templates))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// get the issue author's stats to compute data features
 	for i, issue := range issues {
 		username := issue.Author.Login
 
@@ -116,8 +122,7 @@ func main() {
 			}
 			authors[username] = author
 		}
-		//fmt.Printf("%+v\n", author)
-		feat := spam.GetFeatures(issue, author)
+		feat := spam.GetFeatures(issue, author, templates)
 		feats = append(feats, feat)
 
 		if i%20 == 19 {
@@ -125,6 +130,7 @@ func main() {
 		}
 	}
 
+	// save dataset to csv
 	filename := fmt.Sprintf("%s-%s_data.csv", owner, repo)
 	if err := writeToCSV(filename, feats); err != nil {
 		log.Fatal(err)

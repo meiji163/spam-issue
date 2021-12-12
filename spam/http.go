@@ -84,30 +84,32 @@ func GetUserStats(username string) (User, error) {
 	return usr, nil
 }
 
-// Get contributors and the number of contributions for a repo
-func GetContributors(owner, repo string) (map[string]int, error) {
-	opts := &api.ClientOptions{EnableCache: true}
-	client, err := gh.RESTClient(opts)
-	if err != nil {
-		return nil, err
-	}
+func GetTemplates(owner, repo string) ([]string, error) {
+	query := `query GetIssueTemplates($owner: String!, $repo: String!) {
+  	repository(owner: $owner, name: $repo) { issueTemplates { body } } }`
 
-	resp := []struct {
-		Login         string
-		Contributions int
+	variables := map[string]interface{}{"owner": owner, "repo": repo}
+	resp := struct {
+		Repository struct {
+			IssueTemplates []struct{ Body string }
+		}
 	}{}
-	err = client.Get(fmt.Sprintf("repos/%s/%s/contributors", owner, repo), &resp)
+
+	opts := &api.ClientOptions{EnableCache: true}
+	client, err := gh.GQLClient(opts)
 	if err != nil {
 		return nil, err
 	}
 
-	contribs := make(map[string]int)
-
-	for _, usr := range resp {
-		contribs[usr.Login] = usr.Contributions
+	if err := client.Do(query, variables, &resp); err != nil {
+		return nil, err
 	}
 
-	return contribs, nil
+	templates := []string{}
+	for _, body := range resp.Repository.IssueTemplates {
+		templates = append(templates, body.Body)
+	}
+	return templates, nil
 }
 
 // Gets issues opened by an author in a repo

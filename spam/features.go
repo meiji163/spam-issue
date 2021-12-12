@@ -30,9 +30,12 @@ type Features struct {
 	// IsBioSet is 1 if author has a bio, else 0
 	IsBioSet int
 
-	// Lengths of the Issue content
+	// Number of chars in the Issue content
 	TitleLen int
 	BodyLen  int
+
+	// The max similarity score between the issue and the repo's issue templates
+	TemplateScore int
 
 	Followers int
 	Following int
@@ -41,10 +44,12 @@ type Features struct {
 	IsSpam int
 }
 
-func GetFeatures(issue Issue, author User) Features {
+func GetFeatures(issue Issue, author User, templates []string) Features {
 	issueCreated, _ := time.Parse(time.RFC3339, issue.CreatedAt)
 	acctCreated, _ := time.Parse(time.RFC3339, author.CreatedAt)
 	acctAge := int(issueCreated.Sub(acctCreated).Hours() / 24)
+
+	simScore := MaxSimScore(issue.Body, templates)
 
 	feats := Features{
 		Association:   AssocToClass[issue.AuthorAssociation],
@@ -55,6 +60,7 @@ func GetFeatures(issue Issue, author User) Features {
 		AuthorRepos:   author.ReposContributed,
 		TitleLen:      len(issue.Title),
 		BodyLen:       len(issue.Body),
+		TemplateScore: simScore,
 	}
 
 	if author.Bio != "" {
