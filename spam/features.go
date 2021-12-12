@@ -30,6 +30,10 @@ type Features struct {
 	// IsBioSet is 1 if author has a bio, else 0
 	IsBioSet int
 
+	// Lengths of the Issue content
+	TitleLen int
+	BodyLen  int
+
 	Followers int
 	Following int
 
@@ -49,6 +53,8 @@ func GetFeatures(issue Issue, author User) Features {
 		AccountAge:    acctAge,
 		Contributions: author.TotalContributions,
 		AuthorRepos:   author.ReposContributed,
+		TitleLen:      len(issue.Title),
+		BodyLen:       len(issue.Body),
 	}
 
 	if author.Bio != "" {

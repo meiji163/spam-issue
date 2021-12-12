@@ -1,3 +1,5 @@
+// Downloads issues from a repo for training a spam classifier
+
 package main
 
 import (
@@ -53,18 +55,20 @@ func writeToCSV(fname string, feats []spam.Features) error {
 
 	defer f.Close()
 
-	header := "association,contributions,repos,age,followers,following,is_spam\n"
+	header := "association,contributions,repos,age,followers,following,body_len,title_len,is_spam\n"
 	f.WriteString(header)
 
 	for _, feat := range feats {
 		f.WriteString(
-			fmt.Sprintf("%d,%d,%d,%d,%d,%d,%d\n",
+			fmt.Sprintf("%d,%d,%d,%d,%d,%d,%d,%d,%d\n",
 				feat.Association,
 				feat.Contributions,
 				feat.AuthorRepos,
 				feat.AccountAge,
 				feat.Followers,
 				feat.Following,
+				feat.BodyLen,
+				feat.TitleLen,
 				feat.IsSpam))
 	}
 	return nil
