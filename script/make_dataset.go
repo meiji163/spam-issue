@@ -118,7 +118,8 @@ func main() {
 		if !ok {
 			author, err = spam.GetUserStats(username)
 			if err != nil {
-				log.Fatal(err)
+                log.Printf("Error querying user %s\n",username)
+                continue
 			}
 			authors[username] = author
 		}

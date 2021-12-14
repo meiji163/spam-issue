@@ -66,7 +66,9 @@ func GetFeatures(issue Issue, author User, templates []string) Features {
 	if author.Bio != "" {
 		feats.IsBioSet = 1
 	}
-	if issue.IsSpam {
+
+    // assume contributors never post spam
+	if issue.IsSpam && feats.Association < 3 {
 		feats.IsSpam = 1
 	}
 	return feats

@@ -4,9 +4,11 @@ import (
 	"encoding/gob"
 	"fmt"
 	"os"
+    "math/rand"
 
 	"github.com/sjwhitworth/golearn/base"
-	"github.com/sjwhitworth/golearn/trees"
+	"github.com/sjwhitworth/golearn/evaluation"
+    "github.com/sjwhitworth/golearn/ensemble"
 )
 
 func writeGob(filePath string, object interface{}) error {
@@ -31,24 +33,39 @@ func readGob(filePath string, object interface{}) error {
 
 func main() {
 
-	classificationData, err := base.ParseCSVToInstances("cli-cli_data.csv", true)
+    rand.Seed(42)
+
+	spamData, err := base.ParseCSVToInstances("cli-cli_data.csv", true)
 	if err != nil {
 		panic(err)
 	}
 
-	decTree := trees.NewDecisionTreeClassifier("entropy", 8, []int64{0, 1})
-	err = readGob("cli-cli_model.gob", decTree)
-	if err != nil {
-		panic(err)
-	}
+    attrs := spamData.AllAttributes()
+    fmt.Println(attrs)
 
-	//err = decTree.Fit(classificationData)
+    fmt.Println(spamData)
+	//testData, trainData := base.InstancesTrainTestSplit(classificationData, 0.2)
+
+	//err = readGob("cli-cli_model.gob", decTree)
 	//if err != nil {
 	//	panic(err)
 	//}
 
-	acc, err := decTree.Evaluate(classificationData)
-	fmt.Printf("Accuracy: %.3f\n", acc)
+	tree := ensemble.NewRandomForest(71, 9)
 
-	//writeGob("cli-cli_model.gob", *decTree)
+    err = tree.Fit(spamData)
+	if err != nil {
+		panic(err)
+	}
+
+    //fmt.Println(tree.Evaluate(testData))
+
+    predictions, err := tree.Predict(spamData)
+	cm, err := evaluation.GetConfusionMatrix(spamData, predictions)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(evaluation.GetSummary(cm))
+
+	writeGob("cli-cli_model.gob", *decTree)
 }

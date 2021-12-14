@@ -1,3 +1,5 @@
+# scikit-learn classifier for comparison
+
 from matplotlib import pyplot as plt
 import pandas as pd
 from sklearn import tree
@@ -10,6 +12,7 @@ targs = dataset["is_spam"]
 
 clf = tree.DecisionTreeClassifier(
         random_state=0, 
+        max_depth=5,
         criterion="entropy",
         class_weight="balanced"
     )
