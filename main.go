@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -17,6 +16,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const numTrees = 61
+
 func main() {
 	cmd := rootCmd()
 	if err := cmd.Execute(); err != nil {
@@ -26,17 +27,19 @@ func main() {
 }
 
 type SpamOpts struct {
-	Number  int
+	Numbers []int
 	RepoArg string
 	Repo    string
 	Owner   string
+	DataDir string
 }
 
 func rootCmd() *cobra.Command {
-	opts := &SpamOpts{}
+	opts := &SpamOpts{Numbers: []int{}}
 	cmd := &cobra.Command{
-		Use:  "spam",
-		Args: cobra.ExactArgs(1),
+		Use:   "spam",
+		Short: "Classify spam issues",
+		Args:  cobra.ExactArgs(1),
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			if opts.RepoArg == "" {
 				repo, err := gh.CurrentRepository()
@@ -57,47 +60,99 @@ func rootCmd() *cobra.Command {
 		},
 	}
 
-	cmd.PersistentFlags().StringVarP(&opts.RepoArg, "repo", "R", "", "specify the repository")
+	cmd.PersistentFlags().StringVarP(&opts.RepoArg, "repo", "R", "", "specify the repository in OWNER/REPO format")
 
-	trainCmd := &cobra.Command{
-		Use:  "train",
-		Args: cobra.MaximumNArgs(1),
+	downloadCmd := &cobra.Command{
+		Use:   "download",
+		Short: "Download issue dataset from a GitHub repository",
+		Args:  cobra.ExactArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runTrain(opts)
+			return runDownload(opts)
 		},
 	}
 
 	classifyCmd := &cobra.Command{
-		Use:  "classify",
-		Args: cobra.ExactArgs(1),
+		Use:   "classify <number>",
+		Short: "Classify issues as spam. Accepts one or more issue numbers",
+		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			num, err := strconv.Atoi(args[0])
-			if err != nil {
-				return fmt.Errorf("Invalid issue number %s", args[0])
+			for _, arg := range args {
+				num, err := strconv.Atoi(arg)
+				if err != nil {
+					return fmt.Errorf("Invalid issue number %s", arg)
+				}
+				opts.Numbers = append(opts.Numbers, num)
 			}
-			opts.Number = num
 
 			return runClassify(opts)
 		},
 	}
 
-	cmd.AddCommand(trainCmd, classifyCmd)
+	cmd.AddCommand(downloadCmd, classifyCmd)
 	return cmd
 }
 
 func runClassify(opts *SpamOpts) error {
-	issue, err := spam.GetIssueByNumber(opts.Owner, opts.Repo, opts.Number)
+	dataPath := fmt.Sprintf("%s-%s.csv", opts.Owner, opts.Repo)
+	if _, err := os.Stat(dataPath); errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("data for %s/%s not found", opts.Owner, opts.Repo)
+	}
+
+	tree := ensemble.NewRandomForest(numTrees, 9)
+
+	dataset, err := base.ParseCSVToInstances(dataPath, true)
 	if err != nil {
 		return err
 	}
 
-	fmt.Println(issue)
+	if err = tree.Fit(dataset); err != nil {
+		return err
+	}
+
+	templates, err := spam.GetTemplates(opts.Owner, opts.Repo)
+	if err != nil {
+		return err
+	}
+
+	issues := []spam.Issue{}
+	feats := []spam.Features{}
+	for _, num := range opts.Numbers {
+		issue, err := spam.GetIssueByNumber(opts.Owner, opts.Repo, num)
+		if err != nil {
+			return err
+		}
+		issues = append(issues, issue)
+
+		username := issue.Author.Login
+		author, err := spam.GetUserStats(username)
+		if err != nil {
+			return fmt.Errorf("Error getting user stats for %s: %s", username, err)
+		}
+
+		feat := spam.ExtractFeatures(issue, author, templates)
+		feats = append(feats, feat)
+	}
+
+	instance := classify.FeaturesToInstances(feats)
+
+	pred, err := tree.Predict(instance)
+	if err != nil {
+		return err
+	}
+
+	for i := 0; i < len(issues); i++ {
+		label := "not spam"
+		if pred.RowString(i) != "0" {
+			label = "spam"
+		}
+
+		fmt.Printf("#%d: %s\n", opts.Numbers[i], label)
+	}
 	return nil
 }
 
-func runTrain(opts *SpamOpts) error {
+func runDownload(opts *SpamOpts) error {
 	dataPath := fmt.Sprintf("%s-%s.csv", opts.Owner, opts.Repo)
-
 	if _, err := os.Stat(dataPath); errors.Is(err, os.ErrNotExist) {
 		_, err = os.Create(dataPath)
 		if err != nil {
@@ -105,20 +160,17 @@ func runTrain(opts *SpamOpts) error {
 		}
 	}
 
-	makeOpts := spam.MakeOpts{Owner: opts.Owner, Repo: opts.Repo}
-	feats, err := spam.MakeDataset(makeOpts)
+	feats, err := spam.MakeDataset(spam.MakeOpts{Owner: opts.Owner, Repo: opts.Repo})
 	if err != nil {
 		return err
 	}
-	log.Println("Done making dataset")
 
 	dataset := classify.FeaturesToInstances(feats)
-
 	if err := base.SerializeInstancesToCSV(dataset, dataPath); err != nil {
 		return err
 	}
 
-	tree := ensemble.NewRandomForest(71, 9)
+	tree := ensemble.NewRandomForest(numTrees, 9)
 	if err = tree.Fit(dataset); err != nil {
 		return err
 	}
@@ -134,7 +186,8 @@ func runTrain(opts *SpamOpts) error {
 	}
 	fmt.Println(evaluation.GetSummary(cm))
 
+	// serialize model with gob
 	modelPath := fmt.Sprintf("%s-%s.gob", opts.Owner, opts.Repo)
-	err = classify.WriteGob(modelPath, tree)
+	err = classify.WriteGob(modelPath, *tree)
 	return err
 }

@@ -9,7 +9,7 @@ import (
 	"github.com/cheggaaa/pb/v3"
 )
 
-var AssocToClass = map[string]int{
+var assocToClass = map[string]int{
 	"NONE":                   0,
 	"FIRST_TIMER":            0,
 	"FIRST_TIME_CONTRIBUTOR": 1,
@@ -105,7 +105,7 @@ func ExtractFeatures(issue Issue, author User, templates []string) Features {
 	simScore := MaxSimScore(issue.Body, templates)
 
 	feats := Features{
-		Association:   AssocToClass[issue.AuthorAssociation],
+		Association:   assocToClass[issue.AuthorAssociation],
 		Following:     author.Following,
 		Followers:     author.Followers,
 		AccountAge:    acctAge,

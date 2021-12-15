@@ -83,16 +83,3 @@ func ReadGob(filePath string, object interface{}) error {
 	file.Close()
 	return err
 }
-
-//func main() {
-//	feats := []spam.Features{
-//		spam.Features{Association: 3, BodyLen: 14},
-//		spam.Features{Association: 1, Contributions: 1000},
-//	}
-//	inst := featuresToInstances(feats)
-//	fmt.Println(inst)
-//	err := base.SerializeInstancesToCSV(inst, "test.csv")
-//	if err != nil {
-//		log.Fatal(err)
-//	}
-//}
