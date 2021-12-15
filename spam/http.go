@@ -117,13 +117,13 @@ func GetTemplates(owner, repo string) ([]string, error) {
 // Gets issues opened by an author in a repo
 func GetUserIssues(owner, repo, username string) ([]Issue, error) {
 	searchQuery := fmt.Sprintf("repo:%s/%s is:issue author:%s", owner, repo, username)
-	return issueSearchQuery(searchQuery)
+	return issueSearchQuery(searchQuery, 1000)
 }
 
 // Finds issues that were likely closed as spam
-func GetSpam(owner, repo string) ([]Issue, error) {
+func GetSpam(owner, repo string, limit int) ([]Issue, error) {
 	searchQuery := fmt.Sprintf("repo:%s/%s is:issue is:closed comments:0 -linked:pr", owner, repo)
-	issues, err := issueSearchQuery(searchQuery)
+	issues, err := issueSearchQuery(searchQuery, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -135,12 +135,12 @@ func GetSpam(owner, repo string) ([]Issue, error) {
 }
 
 // Get closed issues that were definitely not spam
-func GetNonSpam(owner, repo string) ([]Issue, error) {
+func GetNonSpam(owner, repo string, limit int) ([]Issue, error) {
 	searchQuery := fmt.Sprintf("repo:%s/%s is:issue is:closed linked:pr", owner, repo)
-	return issueSearchQuery(searchQuery)
+	return issueSearchQuery(searchQuery, limit)
 }
 
-func issueSearchQuery(query string) ([]Issue, error) {
+func issueSearchQuery(query string, limit int) ([]Issue, error) {
 	opts := &api.ClientOptions{EnableCache: true}
 	client, err := gh.GQLClient(opts)
 	if err != nil {
@@ -189,6 +189,9 @@ search(query: $query, after: $after, type: ISSUE, first: 100) {
 		for _, issue := range resp.Search.Nodes {
 			if issue.Title != "" && issue.Author.Login != "" {
 				issues = append(issues, issue)
+			}
+			if len(issues) >= limit {
+				return issues, nil
 			}
 		}
 

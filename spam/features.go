@@ -27,8 +27,11 @@ type MakeOpts struct {
 }
 
 func MakeDataset(opts MakeOpts) ([]Features, error) {
-	log.Printf("Downloading issues for %s/%s\n", opts.Owner, opts.Repo)
-	issues, err := downloadIssues(opts.Owner, opts.Repo)
+	if opts.Verbose {
+		log.Printf("Downloading issues for %s/%s\n", opts.Owner, opts.Repo)
+	}
+
+	issues, err := downloadIssues(opts.Owner, opts.Repo, opts.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -42,12 +45,13 @@ func MakeDataset(opts MakeOpts) ([]Features, error) {
 		return nil, err
 	}
 
-	log.Printf("%d templates\n", len(templates))
-
-	bar := pb.StartNew(len(issues))
+	if opts.Verbose {
+		log.Printf("%d templates\n", len(templates))
+		log.Println("Processing Issues")
+	}
 
 	// get the issue author's stats to compute dataset features
-	log.Println("Processing Issues")
+	bar := pb.StartNew(len(issues))
 	for _, issue := range issues {
 		username := issue.Author.Login
 		author, ok := authors[username]
@@ -123,8 +127,8 @@ func ExtractFeatures(issue Issue, author User, templates []string) Features {
 	return feats
 }
 
-func downloadIssues(owner, repo string) ([]Issue, error) {
-	issues, err := GetNonSpam(owner, repo)
+func downloadIssues(owner, repo string, limit int) ([]Issue, error) {
+	issues, err := GetNonSpam(owner, repo, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +137,8 @@ func downloadIssues(owner, repo string) ([]Issue, error) {
 		return nil, fmt.Errorf("No issues found in %s/%s", owner, repo)
 	}
 
-	spamIssues, err := GetSpam(owner, repo)
+	limit -= len(issues)
+	spamIssues, err := GetSpam(owner, repo, limit)
 	if err != nil {
 		return nil, err
 	}
