@@ -3,12 +3,12 @@ package main
 import (
 	"encoding/gob"
 	"fmt"
+	"math/rand"
 	"os"
-    "math/rand"
 
 	"github.com/sjwhitworth/golearn/base"
+	"github.com/sjwhitworth/golearn/ensemble"
 	"github.com/sjwhitworth/golearn/evaluation"
-    "github.com/sjwhitworth/golearn/ensemble"
 )
 
 func writeGob(filePath string, object interface{}) error {
@@ -33,17 +33,17 @@ func readGob(filePath string, object interface{}) error {
 
 func main() {
 
-    rand.Seed(42)
+	rand.Seed(42)
 
 	spamData, err := base.ParseCSVToInstances("cli-cli_data.csv", true)
 	if err != nil {
 		panic(err)
 	}
 
-    attrs := spamData.AllAttributes()
-    fmt.Println(attrs)
+	attrs := spamData.AllAttributes()
+	fmt.Println(attrs)
 
-    fmt.Println(spamData)
+	fmt.Println(spamData)
 	//testData, trainData := base.InstancesTrainTestSplit(classificationData, 0.2)
 
 	//err = readGob("cli-cli_model.gob", decTree)
@@ -53,19 +53,18 @@ func main() {
 
 	tree := ensemble.NewRandomForest(71, 9)
 
-    err = tree.Fit(spamData)
+	err = tree.Fit(spamData)
 	if err != nil {
 		panic(err)
 	}
 
-    //fmt.Println(tree.Evaluate(testData))
-
-    predictions, err := tree.Predict(spamData)
+	predictions, err := tree.Predict(spamData)
 	cm, err := evaluation.GetConfusionMatrix(spamData, predictions)
 	if err != nil {
 		panic(err)
 	}
 	fmt.Println(evaluation.GetSummary(cm))
 
-	writeGob("cli-cli_model.gob", *decTree)
+	//writeGob("cli-cli_model.gob", *tree)
+
 }

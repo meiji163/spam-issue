@@ -1,6 +1,13 @@
 package spam
 
-import "time"
+import (
+	"fmt"
+	"log"
+	"sort"
+	"time"
+
+	"github.com/cheggaaa/pb/v3"
+)
 
 var AssocToClass = map[string]int{
 	"NONE":                   0,
@@ -10,6 +17,54 @@ var AssocToClass = map[string]int{
 	"CONTRIBUTOR":            3,
 	"MEMBER":                 4,
 	"OWNER":                  4,
+}
+
+type MakeOpts struct {
+	Owner   string
+	Repo    string
+	Limit   int
+	Verbose bool
+}
+
+func MakeDataset(opts MakeOpts) ([]Features, error) {
+	log.Printf("Downloading issues for %s/%s\n", opts.Owner, opts.Repo)
+	issues, err := downloadIssues(opts.Owner, opts.Repo)
+	if err != nil {
+		return nil, err
+	}
+
+	authors := map[string]User{}
+	feats := []Features{}
+
+	// fetch issue templates for matching
+	templates, err := GetTemplates(opts.Owner, opts.Repo)
+	if err != nil {
+		return nil, err
+	}
+
+	log.Printf("%d templates\n", len(templates))
+
+	bar := pb.StartNew(len(issues))
+
+	// get the issue author's stats to compute dataset features
+	log.Println("Processing Issues")
+	for _, issue := range issues {
+		username := issue.Author.Login
+		author, ok := authors[username]
+		if !ok {
+			author, err = GetUserStats(username)
+			if err != nil {
+				continue
+			}
+			authors[username] = author
+		}
+		feat := ExtractFeatures(issue, author, templates)
+		feats = append(feats, feat)
+		bar.Increment()
+	}
+	bar.Finish()
+
+	return feats, nil
 }
 
 type Features struct {
@@ -27,9 +82,6 @@ type Features struct {
 	// when the issue was posted
 	AccountAge int
 
-	// IsBioSet is 1 if author has a bio, else 0
-	IsBioSet int
-
 	// Number of chars in the Issue content
 	TitleLen int
 	BodyLen  int
@@ -44,7 +96,8 @@ type Features struct {
 	IsSpam int
 }
 
-func GetFeatures(issue Issue, author User, templates []string) Features {
+// ExtractFeatures gets numeric features from issue for classification
+func ExtractFeatures(issue Issue, author User, templates []string) Features {
 	issueCreated, _ := time.Parse(time.RFC3339, issue.CreatedAt)
 	acctCreated, _ := time.Parse(time.RFC3339, author.CreatedAt)
 	acctAge := int(issueCreated.Sub(acctCreated).Hours() / 24)
@@ -63,13 +116,50 @@ func GetFeatures(issue Issue, author User, templates []string) Features {
 		TemplateScore: simScore,
 	}
 
-	if author.Bio != "" {
-		feats.IsBioSet = 1
-	}
-
-    // assume contributors never post spam
+	// assume contributors never post spam
 	if issue.IsSpam && feats.Association < 3 {
 		feats.IsSpam = 1
 	}
 	return feats
+}
+
+func downloadIssues(owner, repo string) ([]Issue, error) {
+	issues, err := GetNonSpam(owner, repo)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(issues) == 0 {
+		return nil, fmt.Errorf("No issues found in %s/%s", owner, repo)
+	}
+
+	spamIssues, err := GetSpam(owner, repo)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(spamIssues) == 0 {
+		return nil, fmt.Errorf("No spam issues found in %s/%s", owner, repo)
+	}
+
+	for _, spamIssue := range spamIssues {
+		spamIssue.IsSpam = true
+		issues = append(issues, spamIssue)
+	}
+	sort.Sort(byNumber(issues))
+	return issues, nil
+}
+
+type byNumber []Issue
+
+func (l byNumber) Len() int {
+	return len(l)
+}
+
+func (l byNumber) Less(i, j int) bool {
+	return l[i].Number < l[j].Number
+}
+
+func (l byNumber) Swap(i, j int) {
+	l[i], l[j] = l[j], l[i]
 }

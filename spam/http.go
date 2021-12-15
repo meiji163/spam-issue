@@ -2,6 +2,7 @@ package spam
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/cli/go-gh"
 	"github.com/cli/go-gh/pkg/api"
@@ -31,7 +32,8 @@ type Issue struct {
 // Gets summary of GitHub user's account and contributions
 func GetUserStats(username string) (User, error) {
 	usr := User{}
-	opts := &api.ClientOptions{EnableCache: true}
+	timeout, _ := time.ParseDuration("2s")
+	opts := &api.ClientOptions{EnableCache: true, Timeout: timeout}
 	client, err := gh.GQLClient(opts)
 	if err != nil {
 		return usr, err
@@ -195,4 +197,35 @@ search(query: $query, after: $after, type: ISSUE, first: 100) {
 		}
 		variables["after"] = resp.Search.PageInfo.EndCursor
 	}
+}
+
+func GetIssueByNumber(owner, repo string, number int) (Issue, error) {
+	query := `query GetIssue($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    issue(number: $number) {
+      author { login }
+      title
+      body
+      authorAssociation
+    }
+  }
+}`
+	resp := struct{ Repository struct{ Issue Issue } }{}
+	variables := map[string]interface{}{
+		"owner":  owner,
+		"repo":   repo,
+		"number": number,
+	}
+
+	client, err := gh.GQLClient(nil)
+	if err != nil {
+		return Issue{}, err
+	}
+	err = client.Do(query, variables, &resp)
+	if err != nil {
+		return Issue{}, err
+	}
+
+	resp.Repository.Issue.Number = number
+	return resp.Repository.Issue, nil
 }
