@@ -9,15 +9,14 @@ Here is an example with the [cli/cli](https://github.com/cli/cli) repo:
 ```shell
 $ gh-spam download -R cli/cli
 
-$ gh-spam classify -R cli/cli 4908
-#4908: spam
+$ gh-spam classify -R cli/cli 4894
+#4894: spam
 ```
-You can verify that #4908 is spam (e.g. `gh issue view -R cli/cli 4908`).
 
 You can also pass multiple issue numbers for classification.
 ```shell
-$ gh-spam classify -R cli/cli 4908 4907 4906 4894
-#4908: spam
+$ gh-spam classify -R cli/cli 4913 4907 4906 4894
+#4913: not spam
 #4907: not spam
 #4906: not spam
 #4894: spam
